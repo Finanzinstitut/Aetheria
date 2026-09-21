@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "aetheria",
+  "version": "${version}",
+  "name": "Aetheria",
+  "description": "High-performance level-of-detail rendering and local chunk caching. Aetheria draws terrain far beyond the server's view distance using compact LOD geometry built entirely on background threads, and remembers the chunks you have visited so they stay on screen when you come back.",
+  "authors": [
+    "The Aetheria Contributors"
+  ],
+  "contact": {
+    "homepage": "https://github.com/finanzinstitut/aetheria",
+    "sources": "https://github.com/finanzinstitut/aetheria",
+    "issues": "https://github.com/finanzinstitut/aetheria/issues"
+  },
+  "license": "MIT",
+  "icon": "assets/aetheria/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "com.aetheria.Aetheria"
+    ],
+    "client": [
+      "com.aetheria.client.AetheriaClient"
+    ]
+  },
+  "mixins": [
+    "aetheria.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "~${minecraft_version}",
+    "java": ">=${java_version}"
+  },
+  "suggests": {
+    "sodium": "*"
+  }
+}

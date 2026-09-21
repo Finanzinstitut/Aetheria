@@ -1,0 +1,38 @@
+{
+  "key.categories.aetheria": "Aetheria",
+  "key.aetheria.toggle_overlay": "Toggle performance overlay",
+
+  "aetheria.config.title": "Aetheria Settings",
+
+  "aetheria.config.category.render": "Rendering",
+  "aetheria.config.lodRenderDistance": "LOD render distance",
+  "aetheria.config.lodRenderDistance.tooltip": "How far distant terrain is drawn, in chunks. This is the headline setting; everything else trades quality against the cost of reaching it.",
+  "aetheria.config.fullDetailRadius": "Full detail radius",
+  "aetheria.config.fullDetailRadius.tooltip": "Distance in chunks that is drawn at the finest detail level. Detail halves with every doubling of distance beyond it.",
+  "aetheria.config.finestDetailShift": "Detail quality",
+  "aetheria.config.finestDetailShift.tooltip": "The finest level of detail Aetheria will use. Lower values are sharper and cost more memory.",
+  "aetheria.config.dynamicDetailEnabled": "Dynamic detail",
+  "aetheria.config.dynamicDetailEnabled.tooltip": "Reduce detail while flying high or moving fast, then restore it once you slow down. Keeps frame times smooth during elytra flight.",
+  "aetheria.config.colorTolerance": "Colour merging tolerance",
+  "aetheria.config.colorTolerance.tooltip": "How different two surfaces may look and still be merged into one quad. Higher values mean fewer quads and slightly flatter colour.",
+  "aetheria.config.renderDistantWater": "Render distant water",
+
+  "aetheria.config.category.performance": "Performance",
+  "aetheria.config.meshThreads": "Meshing threads",
+  "aetheria.config.meshThreads.tooltip": "Threads building LOD geometry. Zero sizes the pool from your processor, leaving headroom for the game itself.",
+  "aetheria.config.ioThreads": "Cache threads",
+  "aetheria.config.memoryBudgetMegabytes": "Memory budget",
+  "aetheria.config.memoryBudgetMegabytes.tooltip": "Soft ceiling on the memory used by loaded LOD data. Terrain past this limit is dropped from memory and reloaded from disk when you return.",
+  "aetheria.config.spansPerColumn": "Vertical detail",
+  "aetheria.config.maxRegionBuildsPerFrame": "Region rebuilds per frame",
+  "aetheria.config.maxRegionBuildsPerFrame.tooltip": "Caps how many areas of distant terrain are queued for rebuilding each frame, so streaming terrain never floods the worker queue.",
+
+  "aetheria.config.category.cache": "Chunk cache",
+  "aetheria.config.cacheEnabled": "Remember visited chunks",
+  "aetheria.config.cacheEnabled.tooltip": "Store the terrain you have seen on disk, so it stays visible on servers that have long since stopped sending it.",
+  "aetheria.config.cacheMaxAgeDays": "Refresh cached terrain after",
+  "aetheria.config.compactOnExit": "Compact cache on exit",
+
+  "aetheria.overlay.title": "Aetheria - distant terrain",
+  "aetheria.overlay.noWorld": "No world loaded"
+}
