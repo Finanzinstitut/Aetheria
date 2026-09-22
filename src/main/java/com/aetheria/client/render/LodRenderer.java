@@ -10,6 +10,7 @@ import com.aetheria.core.LodDetailLevel;
 import com.aetheria.core.LodDetailPolicy;
 import com.aetheria.core.LodMesh;
 import com.aetheria.core.LodMeshBuilder;
+import com.aetheria.core.LodShadeTable;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 
@@ -54,6 +55,9 @@ public final class LodRenderer {
     private final ThreadLocal<LodMeshBuilder> builders = ThreadLocal.withInitial(LodMeshBuilder::new);
 
     /** Camera state sampled once per tick and read by the detail policy. */
+    /** Brightness factors for the current sky level; render thread only. */
+    private final LodShadeTable shadeTable = new LodShadeTable();
+
     private volatile double cameraSpeed;
     private volatile double cameraAltitude;
     private double lastCameraX;
@@ -145,8 +149,9 @@ public final class LodRenderer {
         int vanillaChunks = client.options.getEffectiveRenderDistance();
         int lodChunks = config.lodRenderDistance();
         // getSkyDarken() reports how much the sky is darkened, 0 at noon and higher at night;
-        // invert it into the brightness factor the shading pass expects.
-        float skyBrightness = (15 - client.level.getSkyDarken()) / 15.0f;
+        // invert it into the sky level the shade table is keyed by. The table only rebuilds when
+        // that integer actually changes, which is a handful of times per in-game day.
+        shadeTable.update(LodShadeTable.MAX_SKY_LEVEL - client.level.getSkyDarken());
 
         drawnRegions = 0;
         drawnQuads = 0;
@@ -170,11 +175,7 @@ public final class LodRenderer {
                     continue;
                 }
 
-                final int regionX = rx;
-                final int regionZ = rz;
-                LodRenderRegion region = regions.computeIfAbsent(
-                        LodRenderRegion.key(rx, rz),
-                        key -> new LodRenderRegion(regionX, regionZ));
+                LodRenderRegion region = regionAt(rx, rz);
 
                 LodDetailLevel level = policy.levelFor(chunkDistance, cameraAltitude, cameraSpeed);
                 if (buildsLeft > 0 && (region.isDirty() || region.level() != level)
@@ -192,14 +193,33 @@ public final class LodRenderer {
                     continue;
                 }
 
-                submit(context, region, cameraPos, skyBrightness);
+                submit(context, region, cameraPos);
             }
         }
     }
 
+    /**
+     * Returns the region at these coordinates, creating it if this is the first time it comes into
+     * range.
+     *
+     * <p>Deliberately not a {@code computeIfAbsent} call: the mapping function would be a
+     * capturing lambda, allocated on every lookup even when the region already exists, which in
+     * the steady state is every region in the ring on every frame. Looking up first keeps the
+     * common path free of allocation.
+     */
+    private LodRenderRegion regionAt(int regionX, int regionZ) {
+        long key = LodRenderRegion.key(regionX, regionZ);
+        LodRenderRegion region = regions.get(key);
+        if (region != null) {
+            return region;
+        }
+        LodRenderRegion created = new LodRenderRegion(regionX, regionZ);
+        LodRenderRegion raced = regions.putIfAbsent(key, created);
+        return raced != null ? raced : created;
+    }
+
     /** Submits one region's geometry to the frame's collector. */
-    private void submit(LevelRenderContext context, LodRenderRegion region, Vec3 cameraPos,
-                        float skyBrightness) {
+    private void submit(LevelRenderContext context, LodRenderRegion region, Vec3 cameraPos) {
         LodMesh mesh = region.mesh();
         if (mesh.isEmpty()) {
             return;
@@ -212,12 +232,13 @@ public final class LodRenderer {
         float offsetY = (float) -cameraPos.y;
         float offsetZ = (float) (region.originZ() - cameraPos.z);
 
+        // The region's callback is reused rather than rebuilt, so submitting allocates nothing.
+        LodGeometrySubmitter.RegionRenderer renderer = region.renderer();
+        renderer.prepare(mesh, shadeTable, offsetX, offsetY, offsetZ);
+
         PoseStack poseStack = context.poseStack();
         context.submitNodeCollector().submitCustomGeometry(
-                poseStack,
-                RenderTypes.debugQuads(),
-                (pose, consumer) -> LodGeometrySubmitter.submit(
-                        consumer, mesh, offsetX, offsetY, offsetZ, skyBrightness));
+                poseStack, RenderTypes.debugQuads(), renderer);
 
         drawnRegions++;
         drawnQuads += mesh.quadCount();

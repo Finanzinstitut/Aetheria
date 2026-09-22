@@ -45,6 +45,14 @@ public final class LodRenderRegion {
     private volatile boolean dirty = true;
     private volatile boolean buildInFlight;
 
+    /**
+     * The region's reusable submission callback, created on first use.
+     *
+     * <p>Holding one per region rather than building a lambda per frame keeps the far ring from
+     * allocating hundreds of throwaway objects every frame.
+     */
+    private LodGeometrySubmitter.RegionRenderer renderer;
+
     public LodRenderRegion(int regionX, int regionZ) {
         this.regionX = regionX;
         this.regionZ = regionZ;
@@ -134,6 +142,14 @@ public final class LodRenderRegion {
     /** Returns {@code true} if the region has geometry worth drawing. */
     public boolean isRenderable() {
         return !mesh.get().isEmpty();
+    }
+
+    /** Returns the region's reusable submission callback, creating it on first use. */
+    public LodGeometrySubmitter.RegionRenderer renderer() {
+        if (renderer == null) {
+            renderer = new LodGeometrySubmitter.RegionRenderer();
+        }
+        return renderer;
     }
 
     /** Drops the region's geometry, releasing its arrays to the garbage collector. */

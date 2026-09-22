@@ -176,7 +176,8 @@ src/main/java/com/aetheria/
 │   ├── LodDetailPolicy.java          Distance, altitude and speed to a detail level
 │   ├── GreedyMesher.java             Quad merging and cliff skirts
 │   ├── LodMesh.java                  An immutable batch of quads in parallel primitive arrays
-│   └── LodMeshBuilder.java           Reusable scratch space that builds them
+│   ├── LodMeshBuilder.java           Reusable scratch space that builds them
+│   └── LodShadeTable.java            Precomputed brightness per face and light level
 ├── cache/
 │   ├── LodRegionFile.java            32x32 chunks per file, sector allocated, deflated, CRC checked
 │   ├── LodChunkStore.java            A dimension's region files, with a bounded open-file LRU
@@ -193,7 +194,7 @@ src/main/java/com/aetheria/
 │   └── render/
 │       ├── LodRenderer.java          Region management, frustum culling, submission
 │       ├── LodRenderRegion.java      8x8 chunks batched into one mesh
-│       └── LodGeometrySubmitter.java The only class that touches the graphics API
+│       └── LodGeometrySubmitter.java The only class that writes vertices
 └── mixin/client/CameraMixin.java     The only mixin: extends the far clipping plane
 ```
 
@@ -202,8 +203,8 @@ Two boundaries are deliberate and worth preserving:
 - **`core/` and `cache/` have no Minecraft imports.** That is what makes the mesher, the packing
   format and the region file format testable without a game running, and it is why the test suite
   covers them properly rather than superficially.
-- **Exactly one class touches the graphics API and exactly one class reads block states.** When a
-  Minecraft update breaks the mod, those two files plus the single mixin are where to look.
+- **Exactly one class writes vertices and exactly one class reads block states.** When a Minecraft
+  update breaks the mod, those two files plus the single mixin are where to look.
 
 ### The pipeline
 
@@ -212,8 +213,11 @@ Two boundaries are deliberate and worth preserving:
 2. The result enters `LodChunkCache`: visible immediately, written to disk shortly afterwards.
 3. `LodRenderer` groups chunks into 8×8 regions, has workers greedily mesh each region at the level
    `LodDetailPolicy` selects, and keeps the finished mesh.
-4. Each frame it culls regions against the view frustum and submits the survivors. No meshing, no
-   disk access and no per-chunk allocation happens inside a frame.
+4. Each frame it culls regions against the view frustum and submits the survivors. No meshing and
+   no disk access happen inside a frame, and the steady-state path allocates nothing per region:
+   each region keeps a reusable submission callback, region lookup avoids a capturing lambda, and
+   per-quad brightness is a table lookup rather than arithmetic. The only real per-frame work left
+   is writing vertices.
 
 ---
 
@@ -229,9 +233,11 @@ Two honest caveats:
   behaviour as untested until you have launched it yourself.
 - `LodGeometrySubmitter` draws through `RenderTypes.debugQuads()`, the one public untextured-quad
   render type the 26.2 pipeline exposes. It re-submits vertices each frame rather than keeping a
-  static GPU buffer, because 26.2 does not expose a public API for registering a custom render
-  pipeline. Frustum culling and greedy meshing keep the cost well contained, and moving to a static
-  buffer is a change confined to that one class once the API allows it.
+  static GPU buffer, because 26.2 exposes no public API for registering a custom render pipeline
+  (`RenderType.create` is package-private). Greedy meshing, frustum culling, the reusable
+  submission callbacks and the precomputed shade table keep that path lean, but uploading once
+  would still be faster; doing so needs either an access widener or a mixin into the pipeline
+  registry, and it stays confined to that one class.
 
 Aetheria makes no assumptions about the vanilla terrain renderer and should coexist with Sodium and
 similar optimisation mods. Shader packs that replace the terrain pipeline may not apply their
