@@ -129,6 +129,73 @@ class GreedyMesherTest {
     }
 
     @Test
+    void aSkirtIsNotCutShortByTheSurfaceSpansOwnBase() {
+        // Regression: the skirt used to stop at the surface span's base, which is only where the
+        // material stops being uniform - one block down for grass over dirt. Every cliff taller
+        // than that span opened a see-through hole.
+        LodChunk chunk = flatChunk(LodDetailLevel.QUARTER, 30, GRASS);
+        // A plateau one block thick, sitting 40 blocks above its neighbours.
+        chunk.set(1, 1, 0, LodDataPoint.pack(70, 70, GRASS, 0, 15, LodDataPoint.FLAG_EXISTS));
+        LodMeshBuilder builder = new LodMeshBuilder();
+
+        new GreedyMesher(0).mesh(chunk, builder);
+        LodMesh mesh = builder.build();
+
+        assertTrue(mesh.minY() <= 31.0f,
+                "the cliff face must reach the surrounding terrain at y=31, but stopped at "
+                        + mesh.minY());
+    }
+
+    @Test
+    void aChunkBorderGetsABoundedSkirtRatherThanAHoleOrAWall() {
+        // The mesher cannot see the neighbouring chunk, so the border skirt is a bounded drop:
+        // deep enough to hide the seam, not so deep that it hangs in the sky.
+        LodChunk chunk = flatChunk(LodDetailLevel.QUARTER, 100, GRASS);
+        LodMeshBuilder builder = new LodMeshBuilder();
+
+        new GreedyMesher(0).mesh(chunk, builder);
+        LodMesh mesh = builder.build();
+
+        assertTrue(mesh.minY() < 101.0f, "a border skirt must exist at all");
+        assertTrue(mesh.minY() >= 101.0f - 64.0f,
+                "the border skirt must stay bounded, but reached " + mesh.minY());
+    }
+
+    @Test
+    void skirtsStayBoundedEvenAgainstAnExtremeHeightDifference() {
+        LodChunk chunk = flatChunk(LodDetailLevel.QUARTER, 64, GRASS);
+        chunk.set(1, 1, 0, LodDataPoint.pack(2000, 2000, GRASS, 0, 15, LodDataPoint.FLAG_EXISTS));
+        LodMeshBuilder builder = new LodMeshBuilder();
+
+        new GreedyMesher(0).mesh(chunk, builder);
+        LodMesh mesh = builder.build();
+
+        // Measure the tallest single quad: the mesh's own minY also covers the flat terrain's
+        // border skirts far below, so it says nothing about the spike's wall.
+        assertTrue(tallestQuad(mesh) <= 513.0f,
+                "one freak column must not produce a kilometre-tall wall, but a quad spanned "
+                        + tallestQuad(mesh));
+    }
+
+    /** Returns the greatest vertical extent of any single quad in the mesh. */
+    private static float tallestQuad(LodMesh mesh) {
+        float tallest = 0.0f;
+        float[] p = mesh.positions();
+        for (int quad = 0; quad < mesh.quadCount(); quad++) {
+            int base = quad * LodMesh.FLOATS_PER_QUAD;
+            float low = Float.MAX_VALUE;
+            float high = -Float.MAX_VALUE;
+            for (int vertex = 0; vertex < 4; vertex++) {
+                float y = p[base + vertex * 3 + 1];
+                low = Math.min(low, y);
+                high = Math.max(high, y);
+            }
+            tallest = Math.max(tallest, high - low);
+        }
+        return tallest;
+    }
+
+    @Test
     void colorDistanceUsesTheLargestChannelDifference() {
         assertEquals(0, GreedyMesher.colorDistance(0x102030, 0x102030));
         assertEquals(0x20, GreedyMesher.colorDistance(0x102030, 0x104030));

@@ -115,8 +115,12 @@ from starting.
 | `cache.maxAgeDays` | `30` | Re-scan cached terrain older than this. `0` never expires it. |
 | `cache.compactOnExit` | `true` | Reclaim holes in the region files when leaving a world. |
 
-The cache lives in `.minecraft/aetheria-cache/<dimension>/`. Deleting it is always safe; it is
-derived data and rebuilds itself as you play.
+The cache lives in `.minecraft/aetheria-cache/<world>/<dimension>/`, where `<world>` is
+`mp_<server address>` on a server or `sp_<save folder>` in single player. Scoping by world matters:
+chunk coordinates repeat across every world in existence, so a cache keyed by dimension alone would
+happily serve one server's terrain inside another world.
+
+Deleting the cache is always safe; it is derived data and rebuilds itself as you play.
 
 ### Tuning advice
 
@@ -191,6 +195,7 @@ src/main/java/com/aetheria/
 │   ├── LodEngine.java                Per-world state and the pipeline
 │   ├── AetheriaDebugHud.java         The F6 overlay
 │   ├── world/WorldLodScanner.java    The only class that reads block states
+│   ├── world/WorldIdentity.java      Scopes the cache to one server or save
 │   └── render/
 │       ├── LodRenderer.java          Region management, frustum culling, submission
 │       ├── LodRenderRegion.java      8x8 chunks batched into one mesh

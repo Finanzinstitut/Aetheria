@@ -73,7 +73,7 @@ class LodDataPointTest {
     }
 
     @Test
-    void blendAveragesColoursAndSpansTheFullHeightRange() {
+    void blendAveragesEveryFieldIncludingHeight() {
         long[] inputs = {
                 LodDataPoint.pack(70, 60, 0x000000, 0, 10, LodDataPoint.FLAG_EXISTS),
                 LodDataPoint.pack(90, 80, 0x404040, 4, 14, LodDataPoint.FLAG_EXISTS),
@@ -83,12 +83,59 @@ class LodDataPointTest {
 
         long blended = LodDataPoint.blend(inputs, 0, 4);
 
-        assertEquals(90, LodDataPoint.topY(blended), "coarse terrain must not sink below the fine terrain");
-        assertEquals(60, LodDataPoint.bottomY(blended));
+        assertEquals(80, LodDataPoint.topY(blended));
+        assertEquals(70, LodDataPoint.bottomY(blended));
         assertEquals(0x202020, LodDataPoint.rgb(blended));
         assertEquals(2, LodDataPoint.blockLight(blended));
         assertEquals(12, LodDataPoint.skyLight(blended));
         assertTrue(LodDataPoint.hasFlag(blended, LodDataPoint.FLAG_MERGED));
+    }
+
+    @Test
+    void oneTallColumnDoesNotDragItsNeighboursUp() {
+        // Regression: taking the maximum height here made a single tall block win every
+        // down-sampling round, turning one tree or tower into a pillar covering a whole chunk.
+        long ground = LodDataPoint.pack(64, 64, 0x404040, 0, 15, LodDataPoint.FLAG_EXISTS);
+        long spike = LodDataPoint.pack(300, 64, 0x404040, 0, 15, LodDataPoint.FLAG_EXISTS);
+        long[] inputs = {spike, ground, ground, ground};
+
+        long blended = LodDataPoint.blend(inputs, 0, 4);
+
+        assertTrue(LodDataPoint.topY(blended) < 130,
+                "one tall column must not dominate the cell, but reached "
+                        + LodDataPoint.topY(blended));
+        assertTrue(LodDataPoint.topY(blended) > 64, "it must still raise the average a little");
+    }
+
+    @Test
+    void blendNeverProducesAnInvertedSpan() {
+        // The bottom is averaged independently of the top, so guard the invariant pack() demands.
+        long[] inputs = {
+                LodDataPoint.pack(64, 64, 0x111111, 0, 0, LodDataPoint.FLAG_EXISTS),
+                LodDataPoint.pack(64, 10, 0x111111, 0, 0, LodDataPoint.FLAG_EXISTS),
+                LodDataPoint.pack(65, 65, 0x111111, 0, 0, LodDataPoint.FLAG_EXISTS),
+                LodDataPoint.pack(63, 63, 0x111111, 0, 0, LodDataPoint.FLAG_EXISTS),
+        };
+
+        long blended = LodDataPoint.blend(inputs, 0, 4);
+
+        assertTrue(LodDataPoint.topY(blended) >= LodDataPoint.bottomY(blended));
+    }
+
+    @Test
+    void repeatedBlendingDoesNotDriftDownwards() {
+        // Down-sampling runs once per level; truncation instead of rounding would sink terrain
+        // a little further on each of those rounds.
+        long point = LodDataPoint.pack(65, 65, 0x222222, 0, 15, LodDataPoint.FLAG_EXISTS);
+        long[] inputs = {point, point, point, point};
+
+        long blended = point;
+        for (int level = 0; level < 4; level++) {
+            inputs = new long[] {blended, blended, blended, blended};
+            blended = LodDataPoint.blend(inputs, 0, 4);
+        }
+
+        assertEquals(65, LodDataPoint.topY(blended), "uniform terrain must keep its height exactly");
     }
 
     @Test

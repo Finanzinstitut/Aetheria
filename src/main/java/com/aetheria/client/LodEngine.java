@@ -52,6 +52,7 @@ public final class LodEngine implements AutoCloseable {
     private final LodChunkCache cache;
     private final WorldLodScanner scanner;
     private final LodRenderer renderer;
+    private final String worldId;
     private final String dimensionId;
 
     private LodDetailPolicy policy;
@@ -60,21 +61,25 @@ public final class LodEngine implements AutoCloseable {
     /**
      * Creates the engine for a world.
      *
-     * @param dimensionId identifier of the dimension, used to scope the on-disk cache
+     * @param worldId     identifier of the server or save, from {@code WorldIdentity}
+     * @param dimensionId identifier of the dimension
      */
-    public LodEngine(String dimensionId) {
+    public LodEngine(String worldId, String dimensionId) {
         this.config = Aetheria.config();
+        this.worldId = worldId;
         this.dimensionId = dimensionId;
         this.executors = new AetheriaExecutors(config.meshThreads(), config.ioThreads());
-        this.store = new LodChunkStore(Aetheria.cacheRoot(), dimensionId);
+        // Scoped by world and then by dimension: chunk coordinates repeat across worlds, so a
+        // cache keyed by dimension alone would serve one world's terrain to another.
+        this.store = new LodChunkStore(Aetheria.cacheRoot().resolve(worldId), dimensionId);
         this.cache = new LodChunkCache(store, executors, config, LodEngine::reportError);
         this.scanner = new WorldLodScanner(config);
         this.renderer = new LodRenderer(config, cache, executors);
         this.policy = buildPolicy();
 
         Aetheria.logger().info(
-                "LOD engine started for {} using {} mesh threads and {} I/O threads",
-                dimensionId, executors.meshThreadCount(), executors.ioThreadCount());
+                "LOD engine started for {}/{} using {} mesh threads and {} I/O threads",
+                worldId, dimensionId, executors.meshThreadCount(), executors.ioThreadCount());
     }
 
     public LodChunkCache cache() {
@@ -95,6 +100,11 @@ public final class LodEngine implements AutoCloseable {
 
     public String dimensionId() {
         return dimensionId;
+    }
+
+    /** Returns the identifier of the server or save this engine caches for. */
+    public String worldId() {
+        return worldId;
     }
 
     /**
@@ -174,8 +184,8 @@ public final class LodEngine implements AutoCloseable {
             if (config.compactOnExit() && config.cacheEnabled()) {
                 long reclaimed = store.compact();
                 if (reclaimed > 0) {
-                    Aetheria.logger().info("Reclaimed {} KB by compacting the {} cache",
-                            reclaimed / 1024L, dimensionId);
+                    Aetheria.logger().info("Reclaimed {} KB by compacting the {}/{} cache",
+                            reclaimed / 1024L, worldId, dimensionId);
                 }
             }
             store.close();
@@ -184,7 +194,7 @@ public final class LodEngine implements AutoCloseable {
         }
 
         cache.clear();
-        Aetheria.logger().info("LOD engine stopped for {}", dimensionId);
+        Aetheria.logger().info("LOD engine stopped for {}/{}", worldId, dimensionId);
     }
 
     private LodDetailPolicy buildPolicy() {

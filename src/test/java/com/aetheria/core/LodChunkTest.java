@@ -50,7 +50,7 @@ class LodChunkTest {
     }
 
     @Test
-    void downSamplingHalvesTheResolutionAndKeepsTheHighestSurface() {
+    void downSamplingHalvesTheResolutionAndAveragesTheSurface() {
         LodChunk chunk = new LodChunk(0, 0, LodDetailLevel.HALF, 1);
         for (int z = 0; z < 8; z++) {
             for (int x = 0; x < 8; x++) {
@@ -64,9 +64,12 @@ class LodChunkTest {
 
         assertEquals(LodDetailLevel.QUARTER, coarse.detailLevel());
         assertEquals(4, coarse.columnsPerAxis());
-        assertEquals(90, LodDataPoint.topY(coarse.getSurface(0, 0)),
-                "down-sampling must keep the highest surface so no hole opens at the LOD seam");
-        assertEquals(64, LodDataPoint.topY(coarse.getSurface(1, 1)));
+        // (90 + 64 + 64 + 64) / 4 = 70.5, rounded to 71. Taking the maximum here instead would
+        // let the one raised column pull the whole cell to 90, and repeating that per level is
+        // what turned single tall blocks into chunk-wide pillars.
+        assertEquals(71, LodDataPoint.topY(coarse.getSurface(0, 0)));
+        assertEquals(64, LodDataPoint.topY(coarse.getSurface(1, 1)),
+                "cells with uniform terrain must keep their height exactly");
     }
 
     @Test

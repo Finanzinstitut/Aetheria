@@ -151,9 +151,15 @@ public final class LodDataPoint {
 
     /**
      * Blends {@code count} data points into one, as used when down-sampling a detail level into the
-     * next coarser one. Colours and light levels are averaged, the top face is the highest of the
-     * inputs and the bottom face the lowest, so coarse terrain never sinks below the fine terrain it
-     * replaces (which would open visible holes at the LOD seam).
+     * next coarser one. Every field is averaged, heights included.
+     *
+     * <p>Averaging the heights rather than taking the highest is not a detail. Down-sampling runs
+     * once per level, so going from block-accurate to one column per chunk applies this four times
+     * over 2x2 groups. Under a maximum, a single tall block among the 256 in a chunk wins every
+     * round and drags the whole chunk up with it: one tree, one lamp post or one tower turns into a
+     * 16x16 pillar standing hundreds of blocks above the landscape. Taking the mean keeps the
+     * coarse surface where the terrain actually is, and lets isolated tall features fade out with
+     * distance instead of dominating the skyline.
      *
      * @param dataPoints array holding the inputs
      * @param offset     index of the first input
@@ -167,8 +173,8 @@ public final class LodDataPoint {
         int blockLight = 0;
         int skyLight = 0;
         int flags = 0;
-        int topY = MIN_Y;
-        int bottomY = MAX_Y;
+        long topSum = 0;
+        long bottomSum = 0;
         int n = 0;
 
         for (int i = offset; i < offset + count; i++) {
@@ -183,8 +189,8 @@ public final class LodDataPoint {
             blockLight += blockLight(dataPoint);
             skyLight += skyLight(dataPoint);
             flags |= flags(dataPoint);
-            topY = Math.max(topY, topY(dataPoint));
-            bottomY = Math.min(bottomY, bottomY(dataPoint));
+            topSum += topY(dataPoint);
+            bottomSum += bottomY(dataPoint);
             n++;
         }
 
@@ -192,7 +198,11 @@ public final class LodDataPoint {
             return EMPTY;
         }
         int rgb = ((r / n) << 16) | ((g / n) << 8) | (b / n);
-        return pack(topY, bottomY, rgb, blockLight / n, skyLight / n, flags | FLAG_MERGED);
+        // Rounded rather than truncated, so repeated down-sampling does not drift downwards.
+        int topY = (int) Math.round((double) topSum / n);
+        int bottomY = (int) Math.round((double) bottomSum / n);
+        return pack(topY, Math.min(bottomY, topY), rgb, blockLight / n, skyLight / n,
+                flags | FLAG_MERGED);
     }
 
     /** Renders a data point as human-readable text, for logs and debug overlays. */

@@ -27,6 +27,25 @@ public final class GreedyMesher {
     /** Default per-channel colour distance below which two columns still merge. */
     public static final int DEFAULT_COLOR_TOLERANCE = 12;
 
+    /**
+     * How far a skirt drops when the neighbour is unknown, as a multiple of the cell size.
+     *
+     * <p>At a chunk border the mesher cannot see the adjacent chunk, so it cannot know how far the
+     * terrain falls away. Dropping a fixed multiple of the cell size covers ordinary slopes; the
+     * wall is buried inside the neighbouring terrain wherever that terrain exists, and where it
+     * does not a short wall still reads far better than a hole.
+     */
+    private static final int UNKNOWN_NEIGHBOUR_CELLS = 4;
+
+    /** Lower bound on that drop, so the finest levels still close their seams. */
+    private static final int MIN_UNKNOWN_SKIRT = 8;
+
+    /** Upper bound on any skirt, so a freak height difference cannot produce an enormous wall. */
+    private static final int MAX_SKIRT = 512;
+
+    /** Returned by {@link #lowestNeighbour} when the neighbouring terrain is not known. */
+    private static final int UNKNOWN_NEIGHBOUR = Integer.MIN_VALUE;
+
     private final int colorTolerance;
     private boolean[] visited = new boolean[0];
 
@@ -142,23 +161,29 @@ public final class GreedyMesher {
         builder.addTopQuad(x0, z0, x1, z1, faceY, rgb, blockLight, skyLight);
 
         // West (-X) and east (+X) skirts run along Z; north (-Z) and south (+Z) run along X.
-        emitSkirt(chunk, builder, LodMesh.FACE_WEST, size, topY, bottomY, rgb, blockLight, skyLight,
+        emitSkirt(builder, LodMesh.FACE_WEST, cell, topY, rgb, blockLight, skyLight,
                 x0, z0, x0, z1, lowestNeighbour(chunk, size, x - 1, z, 0, 1, depth));
-        emitSkirt(chunk, builder, LodMesh.FACE_EAST, size, topY, bottomY, rgb, blockLight, skyLight,
+        emitSkirt(builder, LodMesh.FACE_EAST, cell, topY, rgb, blockLight, skyLight,
                 x1, z0, x1, z1, lowestNeighbour(chunk, size, x + width, z, 0, 1, depth));
-        emitSkirt(chunk, builder, LodMesh.FACE_NORTH, size, topY, bottomY, rgb, blockLight, skyLight,
+        emitSkirt(builder, LodMesh.FACE_NORTH, cell, topY, rgb, blockLight, skyLight,
                 x0, z0, x1, z0, lowestNeighbour(chunk, size, x, z - 1, 1, 0, width));
-        emitSkirt(chunk, builder, LodMesh.FACE_SOUTH, size, topY, bottomY, rgb, blockLight, skyLight,
+        emitSkirt(builder, LodMesh.FACE_SOUTH, cell, topY, rgb, blockLight, skyLight,
                 x0, z1, x1, z1, lowestNeighbour(chunk, size, x, z + depth, 1, 0, width));
     }
 
-    private void emitSkirt(LodChunk chunk, LodMeshBuilder builder, byte face, int size, int topY,
-                           int bottomY, int rgb, int blockLight, int skyLight, float sx0, float sz0,
-                           float sx1, float sz1, int neighbourTopY) {
-        // Drop the wall to the lowest neighbouring surface, but never below the span's own base:
-        // terrain beneath that belongs to a lower span and is meshed separately.
-        float top = topY + 1.0f;
-        float bottom = Math.max(bottomY, neighbourTopY + 1);
+    private void emitSkirt(LodMeshBuilder builder, byte face, int cell, int topY, int rgb,
+                           int blockLight, int skyLight, float sx0, float sz0, float sx1, float sz1,
+                           int neighbourTopY) {
+        int top = topY + 1;
+        int bottom;
+        if (neighbourTopY == UNKNOWN_NEIGHBOUR) {
+            bottom = top - Math.max(MIN_UNKNOWN_SKIRT, cell * UNKNOWN_NEIGHBOUR_CELLS);
+        } else {
+            bottom = neighbourTopY + 1;
+        }
+        // A single freak height difference should not produce a wall kilometres tall.
+        bottom = Math.max(bottom, top - MAX_SKIRT);
+
         if (bottom >= top) {
             return;
         }
@@ -167,9 +192,12 @@ public final class GreedyMesher {
 
     /**
      * Returns the lowest surface height among {@code count} columns starting at {@code (x, z)} and
-     * stepping by {@code (stepX, stepZ)}. Columns outside the chunk, and columns with no terrain,
-     * count as the bottom of the world so that the skirt reaches all the way down at a chunk border
-     * where the neighbour is not loaded yet.
+     * stepping by {@code (stepX, stepZ)}.
+     *
+     * <p>Columns outside the chunk, and columns with no terrain, make the answer
+     * {@link #UNKNOWN_NEIGHBOUR}: the mesher works one chunk at a time and genuinely cannot see
+     * past the border, so the caller falls back to a bounded drop rather than pretending the
+     * terrain ends there.
      */
     private int lowestNeighbour(LodChunk chunk, int size, int x, int z, int stepX, int stepZ,
                                 int count) {
@@ -178,15 +206,15 @@ public final class GreedyMesher {
             int cx = x + stepX * i;
             int cz = z + stepZ * i;
             if (cx < 0 || cx >= size || cz < 0 || cz >= size) {
-                return LodDataPoint.MIN_Y;
+                return UNKNOWN_NEIGHBOUR;
             }
             long neighbour = chunk.getSurface(cx, cz);
             if (!LodDataPoint.exists(neighbour)) {
-                return LodDataPoint.MIN_Y;
+                return UNKNOWN_NEIGHBOUR;
             }
             lowest = Math.min(lowest, LodDataPoint.topY(neighbour));
         }
-        return lowest == Integer.MAX_VALUE ? LodDataPoint.MIN_Y : lowest;
+        return lowest == Integer.MAX_VALUE ? UNKNOWN_NEIGHBOUR : lowest;
     }
 
     /** Returns {@code true} if two surfaces are similar enough to share a quad. */

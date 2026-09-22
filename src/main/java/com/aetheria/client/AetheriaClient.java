@@ -1,6 +1,7 @@
 package com.aetheria.client;
 
 import com.aetheria.Aetheria;
+import com.aetheria.client.world.WorldIdentity;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
@@ -24,7 +25,9 @@ public final class AetheriaClient implements ClientModInitializer {
 
     private static LodEngine engine;
 
-    /** Dimension the current engine was built for, used to detect a dimension change. */
+    /** World and dimension the current engine was built for, used to detect a change of either. */
+    private static String activeKey;
+    private static String activeWorld;
     private static String activeDimension;
 
     /** Returns the engine for the current world, or {@code null} if no world is loaded. */
@@ -69,11 +72,16 @@ public final class AetheriaClient implements ClientModInitializer {
             return;
         }
 
+        String world = WorldIdentity.current(client);
         String dimension = level.dimension().identifier().toString();
-        if (engine == null || !dimension.equals(activeDimension)) {
+        String key = world + "/" + dimension;
+
+        if (engine == null || !key.equals(activeKey)) {
             shutdownEngine();
+            activeWorld = world;
             activeDimension = dimension;
-            engine = new LodEngine(dimension);
+            activeKey = key;
+            engine = new LodEngine(world, dimension);
         }
 
         engine.tick(client);
@@ -85,7 +93,9 @@ public final class AetheriaClient implements ClientModInitializer {
             engine.close();
             engine = null;
         }
+        activeWorld = null;
         activeDimension = null;
+        activeKey = null;
     }
 
     /**
@@ -96,11 +106,14 @@ public final class AetheriaClient implements ClientModInitializer {
      */
     public static void reload() {
         Aetheria.reloadConfig();
+        String world = activeWorld;
         String dimension = activeDimension;
         shutdownEngine();
-        if (dimension != null) {
+        if (world != null && dimension != null) {
+            activeWorld = world;
             activeDimension = dimension;
-            engine = new LodEngine(dimension);
+            activeKey = world + "/" + dimension;
+            engine = new LodEngine(world, dimension);
         }
     }
 }
