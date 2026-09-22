@@ -1,0 +1,70 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+    id 'java'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    // Loom adds the Minecraft and Fabric repositories automatically; only extra mod
+    // repositories belong here.
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+    // The level-of-detail core, the greedy mesher and the cache format are plain Java with no
+    // Minecraft dependency, which is exactly what makes them unit testable.
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+processResources {
+    def properties = [
+            version          : project.version,
+            minecraft_version: project.minecraft_version,
+            loader_version   : project.loader_version,
+            java_version     : project.java_version,
+    ]
+    inputs.properties properties
+
+    filesMatching('fabric.mod.json') {
+        expand properties
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = Integer.parseInt(project.java_version)
+    it.options.encoding = 'UTF-8'
+    // Aetheria is a performance mod; warnings about unchecked or unsafe operations in the hot
+    // paths are worth reading rather than hiding.
+    it.options.compilerArgs << '-Xlint:all,-processing,-serial'
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+    }
+}
+
+jar {
+    from('LICENSE') {
+        rename { "${it}_${project.base.archivesName.get()}" }
+    }
+}
